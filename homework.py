@@ -99,7 +99,7 @@ def check_response(response):
         logger.error(f'Несуществующий ключ. Ошибка: {error}')
     if not isinstance(response.get('homeworks'), list):
         raise TypeError('Данные пришли не в виду списка.')
-    return response.get('homeworks')[0]
+    return response.get('homeworks')
 
 
 def parse_status(homework):
@@ -150,6 +150,7 @@ def main():
             if not homework:
                 raise NotHomeworkError('Статус домашней работы не обновлен.')
             else:
+                homework = homework[0]
                 status = parse_status(homework)
                 send_message(bot, status)
         except Exception as error:
