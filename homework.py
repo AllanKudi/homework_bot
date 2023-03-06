@@ -7,9 +7,10 @@ from logging import StreamHandler
 
 import requests
 import telegram
+from telegram.error import TelegramError
 from dotenv import load_dotenv
 
-from exceptions import NotHomeworkError, HTTPError
+from exceptions import HTTPError
 
 load_dotenv()
 
@@ -42,13 +43,7 @@ def check_tokens():
     Если отсутствует хотя бы одна переменная окружения
     — продолжать работу бота нет смысла.
     """
-    try:
-        tockens = all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
-    except Exception as error:
-        logger.critical(
-            f'Отсутствуют обязательные переменные окружения! Ошибка: {error}'
-        )
-    return tockens
+    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
 
 
 def send_message(bot, message):
@@ -60,10 +55,8 @@ def send_message(bot, message):
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logger.debug('Сообщение в телеграм успешно отправлено.')
-    except Exception as error:
-        logger.error(
-            f'Не получилось отправить сообщение. Всему виной: {error}'
-        )
+    except TelegramError:
+        logger.error('Не получилось отправить сообщение.')
 
 
 def get_api_answer(timestamp):
@@ -78,10 +71,14 @@ def get_api_answer(timestamp):
         homework_statuses = requests.get(
             ENDPOINT, headers=HEADERS, params=payload
         )
-    except Exception as error:
-        logger.error(f'Сбой при запросе к эндпойнту. Подробнее: {error}')
+    except requests.RequestException as req_ex:
+        raise req_ex('Сбой при запросе к эндпойнту.')
     if not homework_statuses.status_code == HTTPStatus.OK:
-        raise HTTPError('Получен код, отличный от 200.')
+        raise HTTPError(
+            f'Получен код, отличный от 200: {homework_statuses.status_code}. '
+            f'Текст ответа: {homework_statuses.text}, '
+            f'Заголовок ответа: {homework_statuses.headers}, '
+        )
     return homework_statuses.json()
 
 
@@ -93,16 +90,15 @@ def check_response(response):
     """
     if not isinstance(response, dict):
         raise TypeError('Получен иной тип данных, отличный от словаря.')
-    try:
-        response.get('homeworks') is not None
-    except Exception as error:
-        logger.error(f'Несуществующий ключ. Ошибка: {error}')
+    homeworks = response.get('homeworks')
+    if not homeworks:
+        raise KeyError("В ответе нет ключа 'homeworks'.")
     if not isinstance(response.get('homeworks'), list):
         raise TypeError('Данные пришли не в виду списка.')
     return response.get('homeworks')
 
 
-def parse_status(homework):
+def parse_status(homeworks):
     """
     Извлекает из информации о домашней работе статус этой работы.
     В качестве параметра функция получает
@@ -114,13 +110,12 @@ def parse_status(homework):
     homework_name = ''
     homework_status = ''
     verdict = ''
-    if 'homework_name' not in homework:
-        raise KeyError('Отсутствует ключ названия домашки!')
-    homework_name = homework.get('homework_name')
-    try:
-        homework_status = homework.get('status')
-    except KeyError:
-        logging.error('Не найден статус домашней работы!')
+    homework_name = homeworks.get('homework_name')
+    if not homework_name:
+        raise KeyError('Отсутствует ключ названия домашней работы!')
+    homework_status = homeworks.get('status')
+    if not homework_status:
+        raise KeyError('Не найден ключ статуса домашней работы!')
     if homework_status not in HOMEWORK_VERDICTS.keys():
         raise KeyError('Получен неожиданный статус домашней работы!')
     verdict = HOMEWORK_VERDICTS[homework_status]
@@ -143,16 +138,15 @@ def main():
     timestamp = int(time.time())
     while True:
         try:
-            check_tokens()
             response = get_api_answer(timestamp)
-            homework = check_response(response)
+            homeworks = check_response(response)
             timestamp = response.get('current_date', timestamp)
-            if not homework:
-                raise NotHomeworkError('Статус домашней работы не обновлен.')
-            else:
-                homework = homework[0]
-                status = parse_status(homework)
+            if homeworks:
+                status = parse_status(homeworks[0])
                 send_message(bot, status)
+            else:
+                update_message = 'Нет обновлений статуса домашней работы.'
+                send_message(bot, update_message)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             send_message(bot, message)
