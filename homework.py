@@ -91,9 +91,7 @@ def check_response(response):
     if not isinstance(response, dict):
         raise TypeError('Получен иной тип данных, отличный от словаря.')
     homeworks = response.get('homeworks')
-    if not homeworks:
-        raise KeyError("В ответе нет ключа 'homeworks'.")
-    if not isinstance(response.get('homeworks'), list):
+    if not isinstance(homeworks, list):
         raise TypeError('Данные пришли не в виду списка.')
     return response.get('homeworks')
 
