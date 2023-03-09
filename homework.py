@@ -72,7 +72,7 @@ def get_api_answer(timestamp):
             ENDPOINT, headers=HEADERS, params=payload
         )
     except requests.RequestException as e:
-        raise ApiRequestError('Ошибка при отправке запроса к api: {e}') 
+        raise ApiRequestError(f'Ошибка при отправке запроса к api: {e}')
     if not homework_statuses.status_code == HTTPStatus.OK:
         raise HTTPError(
             f'Получен код, отличный от 200: {homework_statuses.status_code}. '
@@ -140,23 +140,21 @@ def main():
             if homeworks:
                 status = parse_status(homeworks[0])
                 if messages != status:
-                   messages = status
-                   send_message(bot, messages)
+                    messages = status
+                    send_message(bot, messages)
             else:
                 update_message = 'Нет обновлений статуса домашней работы.'
                 if messages != update_message:
-                   messages = update_message
-                   send_message(bot, messages)
+                    messages = update_message
+                    send_message(bot, messages)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             if messages == message:
-               logger.error(message)
+                logger.error(message)
             else:
-               messages = message
-               send_message(bot, messages)
-               messages = ''
-
-
+                messages = message
+                send_message(bot, messages)
+                messages = ''
         finally:
             time.sleep(RETRY_PERIOD)
 
