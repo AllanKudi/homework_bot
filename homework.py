@@ -10,7 +10,7 @@ import telegram
 from telegram.error import TelegramError
 from dotenv import load_dotenv
 
-from exceptions import HTTPError
+from exceptions import HTTPError, ApiRequestError
 
 load_dotenv()
 
@@ -71,8 +71,8 @@ def get_api_answer(timestamp):
         homework_statuses = requests.get(
             ENDPOINT, headers=HEADERS, params=payload
         )
-    except requests.RequestException as req_ex:
-        raise req_ex('Сбой при запросе к эндпойнту.')
+    except requests.RequestException as e:
+        raise ApiRequestError('Ошибка при отправке запроса к api: {e}') 
     if not homework_statuses.status_code == HTTPStatus.OK:
         raise HTTPError(
             f'Получен код, отличный от 200: {homework_statuses.status_code}. '
@@ -105,9 +105,6 @@ def parse_status(homeworks):
     подготовленную для отправки в Telegram строку,
     содержащую один из вердиктов словаря HOMEWORK_VERDICTS.
     """
-    homework_name = ''
-    homework_status = ''
-    verdict = ''
     homework_name = homeworks.get('homework_name')
     if not homework_name:
         raise KeyError('Отсутствует ключ названия домашней работы!')
@@ -134,6 +131,7 @@ def main():
         sys.exit('Необходимо добавить переменные окружения!')
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
+    messages = ''
     while True:
         try:
             response = get_api_answer(timestamp)
@@ -141,14 +139,24 @@ def main():
             timestamp = response.get('current_date', timestamp)
             if homeworks:
                 status = parse_status(homeworks[0])
-                send_message(bot, status)
+                if messages != status:
+                   messages = status
+                   send_message(bot, messages)
             else:
                 update_message = 'Нет обновлений статуса домашней работы.'
-                send_message(bot, update_message)
+                if messages != update_message:
+                   messages = update_message
+                   send_message(bot, messages)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-            send_message(bot, message)
-            logger.error(message)
+            if messages == message:
+               logger.error(message)
+            else:
+               messages = message
+               send_message(bot, messages)
+               messages = ''
+
+
         finally:
             time.sleep(RETRY_PERIOD)
 
